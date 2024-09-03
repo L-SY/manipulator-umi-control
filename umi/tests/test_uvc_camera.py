@@ -11,25 +11,20 @@ import time
 from multiprocessing.managers import SharedMemoryManager
 from umi.real_world.uvc_camera import UvcCamera, VideoRecorder
 from umi.common.usb_util import reset_all_elgato_devices, get_sorted_v4l_paths
-from polymetis import RobotInterface
+# from polymetis import RobotInterface
 
 
 def test():
     # Find and reset all Elgato capture cards.
     # Required to workaround a firmware bug.
     reset_all_elgato_devices()
+    time.sleep(0.5)
     v4l_paths = get_sorted_v4l_paths()
-    v4l_path = v4l_paths[0]
-    
+    print(v4l_paths)
+    v4l_path = v4l_paths[1]
+    # v4l_path = '/dev/video2'
+
     with SharedMemoryManager() as shm_manager:
-        # video_recorder = VideoRecorder.create_h264(
-        #     shm_manager=shm_manager,
-        #     fps=30,
-        #     codec='h264_nvenc',
-        #     input_pix_fmt='bgr24',
-        #     thread_type='FRAME',
-        #     thread_count=4
-        # )
         video_recorder = VideoRecorder(
             shm_manager=shm_manager,
             fps=30,
@@ -65,16 +60,6 @@ def test():
                 print(data['camera_capture_timestamp'] - data['camera_receive_timestamp'])
 
                 bgr = data['color']
-                # print(bgr.shape)
-                # cv2.imshow('default', bgr)
-                # key = cv2.pollKey()
-                # if key == ord('q'):
-                #     break
-                # elif key == ord('r'):
-                #     video_path = 'data_local/test.mp4'
-                #     realsense.start_recording(video_path)
-                # elif key == ord('s'):
-                #     realsense.stop_recording()
                 
                 time.sleep(1/60)
                 if time.time() > (rec_start_time + 5.0):

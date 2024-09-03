@@ -53,9 +53,8 @@ def reset_all_elgato_devices():
     
     # enumerate UBS device to find Elgato Capture Card
     device_list = create_usb_list()
-    
     for dev in device_list:
-        if 'Elgato' in dev['description']:
+        if 'MACROSILICON' in dev['description']:
             dev_usb_path = dev['path']
             reset_usb_device(dev_usb_path)
 

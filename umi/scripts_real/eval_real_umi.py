@@ -56,7 +56,7 @@ from diffusion_policy.common.pytorch_util import dict_apply
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 from umi.common.precise_sleep import precise_wait
-from umi.real_world.umi_env import UmiEnv
+from umi.real_world.ps_umi_env import UmiEnv
 from umi.real_world.keystroke_counter import (
     KeystrokeCounter, Key, KeyCode
 )
@@ -64,7 +64,7 @@ from umi.real_world.real_inference_util import (get_real_obs_dict,
                                                 get_real_obs_resolution,
                                                 get_real_umi_obs_dict,
                                                 get_real_umi_action)
-from umi.real_world.spacemouse_shared_memory import Spacemouse
+# from umi.real_world.spacemouse_shared_memory import Spacemouse
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
@@ -80,7 +80,7 @@ OmegaConf.register_new_resolver("eval", eval, replace=True)
 @click.option('--match_dataset', '-m', default=None, help='Dataset used to overlay and adjust initial condition')
 @click.option('--match_episode', '-me', default=None, type=int, help='Match specific episode from the match dataset')
 @click.option('--match_camera', '-mc', default=0, type=int)
-@click.option('--camera_reorder', '-cr', default='021')
+@click.option('--camera_reorder', '-cr', default='01')
 @click.option('--vis_camera_idx', default=0, type=int, help="Which RealSense camera to visualize.")
 @click.option('--init_joints', '-j', is_flag=True, default=False, help="Whether to initialize robot joint configuration in the beginning.")
 @click.option('--steps_per_inference', '-si', default=6, type=int, help="Action horizon for inference.")
@@ -107,7 +107,7 @@ def main(input, output, robot_ip, gripper_ip,
     # load checkpoint
     ckpt_path = input
     if not ckpt_path.endswith('.ckpt'):
-        ckpt_path = os.path.join(ckpt_path, 'checkpoints', 'latest.ckpt')
+        ckpt_path = os.path.join(ckpt_path, 'latest.ckpt')
     payload = torch.load(open(ckpt_path, 'rb'), map_location='cpu', pickle_module=dill)
     cfg = payload['cfg']
     print("model_name:", cfg.policy.obs_encoder.model_name)
@@ -131,12 +131,9 @@ def main(input, output, robot_ip, gripper_ip,
 
     print("steps_per_inference:", steps_per_inference)
     with SharedMemoryManager() as shm_manager:
-        with Spacemouse(shm_manager=shm_manager) as sm, \
-            KeystrokeCounter() as key_counter, \
+        with KeystrokeCounter() as key_counter, \
             UmiEnv(
-                output_dir=output, 
-                robot_ip=robot_ip,
-                gripper_ip=gripper_ip,
+                output_dir=output,
                 frequency=frequency,
                 obs_image_resolution=obs_res,
                 obs_float32=True,
@@ -149,11 +146,6 @@ def main(input, output, robot_ip, gripper_ip,
                 gripper_obs_latency=0.01,
                 robot_action_latency=0.18,
                 gripper_action_latency=0.1,
-                # camera_obs_latency=0.0,
-                # robot_obs_latency=0.0,
-                # gripper_obs_latency=0.0,
-                # robot_action_latency=0.0,
-                # gripper_action_latency=0.0,
                 # obs
                 camera_obs_horizon=cfg.task.shape_meta.obs.camera0_rgb.horizon,
                 robot_obs_horizon=cfg.task.shape_meta.obs.robot0_eef_pos.horizon,
@@ -165,7 +157,6 @@ def main(input, output, robot_ip, gripper_ip,
                 # action
                 max_pos_speed=2.0,
                 max_rot_speed=6.0,
-                robot_type=robot_type,
                 shm_manager=shm_manager) as env:
             cv2.setNumThreads(2)
             print("Waiting for camera")
@@ -336,24 +327,24 @@ def main(input, output, robot_ip, gripper_ip,
                         break
 
                     precise_wait(t_sample)
-                    # get teleop command
-                    sm_state = sm.get_motion_state_transformed()
-                    # print(sm_state)
-                    dpos = sm_state[:3] * (0.5 / frequency)
-                    drot_xyz = sm_state[3:] * (1.5 / frequency)
-
-                    drot = st.Rotation.from_euler('xyz', drot_xyz)
-                    target_pose[:3] += dpos
-                    target_pose[3:] = (drot * st.Rotation.from_rotvec(
-                        target_pose[3:])).as_rotvec()
-                    target_pose[2] = np.maximum(target_pose[2], 0.055)
-                    
+                    # # get teleop command
+                    # sm_state = sm.get_motion_state_transformed()
+                    # # print(sm_state)
+                    # dpos = sm_state[:3] * (0.5 / frequency)
+                    # drot_xyz = sm_state[3:] * (1.5 / frequency)
+                    #
+                    # drot = st.Rotation.from_euler('xyz', drot_xyz)
+                    # target_pose[:3] += dpos
+                    # target_pose[3:] = (drot * st.Rotation.from_rotvec(
+                    #     target_pose[3:])).as_rotvec()
+                    # target_pose[2] = np.maximum(target_pose[2], 0.055)
+                    #
                     dpos = 0
-                    if sm.is_button_pressed(0):
-                        # close gripper
-                        dpos = -gripper_speed / frequency
-                    if sm.is_button_pressed(1):
-                        dpos = gripper_speed / frequency
+                    # if sm.is_button_pressed(0):
+                    #     # close gripper
+                    #     dpos = -gripper_speed / frequency
+                    # if sm.is_button_pressed(1):
+                    #     dpos = gripper_speed / frequency
                     gripper_target_pos = np.clip(gripper_target_pos + dpos, 0, max_gripper_width)
 
                     action = np.zeros((7,))

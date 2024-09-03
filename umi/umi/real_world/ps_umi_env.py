@@ -6,16 +6,13 @@ import shutil
 import math
 import cv2
 from multiprocessing.managers import SharedMemoryManager
-from umi.real_world.rtde_interpolation_controller import RTDEInterpolationController
-from umi.real_world.wsg_controller import WSGController
-from umi.real_world.franka_interpolation_controller import FrankaInterpolationController
 from umi.real_world.multi_uvc_camera import MultiUvcCamera, VideoRecorder
 from diffusion_policy.common.timestamp_accumulator import (
     TimestampActionAccumulator,
     ObsAccumulator
 )
 from umi.common.cv_util import (
-    draw_predefined_mask, 
+    draw_predefined_mask,
     get_mirror_crop_slices
 )
 from umi.real_world.multi_camera_visualizer import MultiCameraVisualizer
@@ -28,53 +25,49 @@ from umi.common.interpolation_util import get_interp1d, PoseInterpolator
 
 
 class UmiEnv:
-    def __init__(self, 
-            # required params
-            output_dir,
-            robot_ip,
-            gripper_ip,
-            gripper_port=1000,
-            # env params
-            frequency=20,
-            robot_type='ur5',
-            # obs
-            obs_image_resolution=(224,224),
-            max_obs_buffer_size=60,
-            obs_float32=False,
-            camera_reorder=None,
-            no_mirror=False,
-            fisheye_converter=None,
-            mirror_crop=False,
-            mirror_swap=False,
-            # timing
-            align_camera_idx=0,
-            # this latency compensates receive_timestamp
-            # all in seconds
-            camera_obs_latency=0.125,
-            robot_obs_latency=0.0001,
-            gripper_obs_latency=0.01,
-            robot_action_latency=0.1,
-            gripper_action_latency=0.1,
-            # all in steps (relative to frequency)
-            camera_down_sample_steps=1,
-            robot_down_sample_steps=1,
-            gripper_down_sample_steps=1,
-            # all in steps (relative to frequency)
-            camera_obs_horizon=2,
-            robot_obs_horizon=2,
-            gripper_obs_horizon=2,
-            # action
-            max_pos_speed=0.25,
-            max_rot_speed=0.6,
-            # robot
-            tcp_offset=0.21,
-            init_joints=False,
-            # vis params
-            enable_multi_cam_vis=True,
-            multi_cam_vis_resolution=(960, 960),
-            # shared memory
-            shm_manager=None
-            ):
+    def __init__(self,
+                 # required params
+                 output_dir,
+                 # env params
+                 frequency=20,
+                 # obs
+                 obs_image_resolution=(224,224),
+                 max_obs_buffer_size=60,
+                 obs_float32=False,
+                 camera_reorder=None,
+                 no_mirror=False,
+                 fisheye_converter=None,
+                 mirror_crop=False,
+                 mirror_swap=False,
+                 # timing
+                 align_camera_idx=0,
+                 # this latency compensates receive_timestamp
+                 # all in seconds
+                 camera_obs_latency=0.125,
+                 robot_obs_latency=0.0001,
+                 gripper_obs_latency=0.01,
+                 robot_action_latency=0.1,
+                 gripper_action_latency=0.1,
+                 # all in steps (relative to frequency)
+                 camera_down_sample_steps=1,
+                 robot_down_sample_steps=1,
+                 gripper_down_sample_steps=1,
+                 # all in steps (relative to frequency)
+                 camera_obs_horizon=2,
+                 robot_obs_horizon=2,
+                 gripper_obs_horizon=2,
+                 # action
+                 max_pos_speed=0.25,
+                 max_rot_speed=0.6,
+                 # robot
+                 tcp_offset=0.21,
+                 init_joints=False,
+                 # vis params
+                 enable_multi_cam_vis=True,
+                 multi_cam_vis_resolution=(960, 960),
+                 # shared memory
+                 shm_manager=None
+                 ):
         output_dir = pathlib.Path(output_dir)
         assert output_dir.parent.is_dir()
         video_dir = output_dir.joinpath('videos')
@@ -94,9 +87,10 @@ class UmiEnv:
         # Wait for all v4l cameras to be back online
         time.sleep(0.1)
         v4l_paths = get_sorted_v4l_paths()
+        print(v4l_paths)
         # if camera_reorder is not None:
         #     paths = [v4l_paths[i] for i in camera_reorder]
-        v4l_paths = '/dev/video2'
+        v4l_paths = v4l_paths[1]
 
         # compute resolution for vis
         rw, rh, col, row = optimal_row_cols(
@@ -117,14 +111,14 @@ class UmiEnv:
         for idx, path in enumerate(v4l_paths):
             if 'Cam_Link_4K' in path:
                 res = (3840, 2160)
-                fps = 30
+                fps = 60
                 buf = 3
-                bit_rate = 6000*1000
+                bit_rate = 3000*1000
                 def tf4k(data, input_res=res):
                     img = data['color']
                     f = get_image_transform(
                         input_res=input_res,
-                        output_res=obs_image_resolution, 
+                        output_res=obs_image_resolution,
                         # obs output rgb
                         bgr_to_rgb=True)
                     img = f(img)
@@ -134,7 +128,7 @@ class UmiEnv:
                     return data
                 transform.append(tf4k)
             else:
-                res = (1920, 1080)
+                res = (1280, 720)
                 fps = 60
                 buf = 1
                 bit_rate = 3000*1000
@@ -157,14 +151,14 @@ class UmiEnv:
                             crop_img = crop_img[:,::-1,::-1] # bgr to rgb
                         f = get_image_transform(
                             input_res=input_res,
-                            output_res=obs_image_resolution, 
+                            output_res=obs_image_resolution,
                             # obs output rgb
                             bgr_to_rgb=True)
                         img = np.ascontiguousarray(f(img))
                         if is_mirror is not None:
                             img[is_mirror] = img[:,::-1,:][is_mirror]
-                        img = draw_predefined_mask(img, color=(0,0,0), 
-                            mirror=no_mirror, gripper=True, finger=False, use_aa=True)
+                        img = draw_predefined_mask(img, color=(0,0,0),
+                                                   mirror=no_mirror, gripper=True, finger=False, use_aa=True)
                         if crop_img is not None:
                             img = np.concatenate([img, crop_img], axis=-1)
                     else:
@@ -228,48 +222,8 @@ class UmiEnv:
         if not init_joints:
             j_init = None
 
-        if robot_type.startswith('ur5'):
-            robot = RTDEInterpolationController(
-                shm_manager=shm_manager,
-                robot_ip=robot_ip,
-                frequency=500, # UR5 CB3 RTDE
-                lookahead_time=0.1,
-                gain=300,
-                max_pos_speed=max_pos_speed*cube_diag,
-                max_rot_speed=max_rot_speed*cube_diag,
-                launch_timeout=3,
-                tcp_offset_pose=[0,0,tcp_offset,0,0,0],
-                payload_mass=None,
-                payload_cog=None,
-                joints_init=j_init,
-                joints_init_speed=1.05,
-                soft_real_time=False,
-                verbose=False,
-                receive_keys=None,
-                receive_latency=robot_obs_latency
-                )
-        elif robot_type.startswith('franka'):
-            robot = FrankaInterpolationController(
-                shm_manager=shm_manager,
-                robot_ip=robot_ip,
-                frequency=200,
-                Kx_scale=1.0,
-                Kxd_scale=np.array([2.0,1.5,2.0,1.0,1.0,1.0]),
-                verbose=False,
-                receive_latency=robot_obs_latency
-            )
-        
-        gripper = WSGController(
-            shm_manager=shm_manager,
-            hostname=gripper_ip,
-            port=gripper_port,
-            receive_latency=gripper_obs_latency,
-            use_meters=True
-        )
 
         self.camera = camera
-        self.robot = robot
-        self.gripper = gripper
         self.multi_cam_vis = multi_cam_vis
         self.frequency = frequency
         self.max_obs_buffer_size = max_obs_buffer_size
@@ -300,16 +254,17 @@ class UmiEnv:
         self.action_accumulator = None
 
         self.start_time = None
-    
+
     # ======== start-stop API =============
     @property
     def is_ready(self):
-        return self.camera.is_ready and self.robot.is_ready and self.gripper.is_ready
-    
+        return self.camera.is_ready
+        # return self.camera.is_ready and self.robot.is_ready and self.gripper.is_ready
+
     def start(self, wait=True):
         self.camera.start(wait=False)
-        self.gripper.start(wait=False)
-        self.robot.start(wait=False)
+        # self.gripper.start(wait=False)
+        # self.robot.start(wait=False)
         if self.multi_cam_vis is not None:
             self.multi_cam_vis.start(wait=False)
         if wait:
@@ -319,22 +274,22 @@ class UmiEnv:
         self.end_episode()
         if self.multi_cam_vis is not None:
             self.multi_cam_vis.stop(wait=False)
-        self.robot.stop(wait=False)
-        self.gripper.stop(wait=False)
+        # self.robot.stop(wait=False)
+        # self.gripper.stop(wait=False)
         self.camera.stop(wait=False)
         if wait:
             self.stop_wait()
 
     def start_wait(self):
         self.camera.start_wait()
-        self.gripper.start_wait()
-        self.robot.start_wait()
+        # self.gripper.start_wait()
+        # self.robot.start_wait()
         if self.multi_cam_vis is not None:
             self.multi_cam_vis.start_wait()
-    
+
     def stop_wait(self):
-        self.robot.stop_wait()
-        self.gripper.stop_wait()
+        # self.robot.stop_wait()
+        # self.gripper.stop_wait()
         self.camera.stop_wait()
         if self.multi_cam_vis is not None:
             self.multi_cam_vis.stop_wait()
@@ -343,8 +298,8 @@ class UmiEnv:
     def __enter__(self):
         self.start()
         return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb): 
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
     # ========= async env API ===========
@@ -365,22 +320,22 @@ class UmiEnv:
             self.camera_obs_horizon * self.camera_down_sample_steps \
             * (60 / self.frequency))
         self.last_camera_data = self.camera.get(
-            k=k, 
+            k=k,
             out=self.last_camera_data)
 
         # 125/500 hz, robot_receive_timestamp
-        last_robot_data = self.robot.get_all_state()
+        # last_robot_data = self.robot.get_all_state()
         # both have more than n_obs_steps data
 
         # 30 hz, gripper_receive_timestamp
-        last_gripper_data = self.gripper.get_all_state()
+        # last_gripper_data = self.gripper.get_all_state()
 
         last_timestamp = self.last_camera_data[self.align_camera_idx]['timestamp'][-1]
         dt = 1 / self.frequency
 
         # align camera obs timestamps
         camera_obs_timestamps = last_timestamp - (
-            np.arange(self.camera_obs_horizon)[::-1] * self.camera_down_sample_steps * dt)
+                np.arange(self.camera_obs_horizon)[::-1] * self.camera_down_sample_steps * dt)
         camera_obs = dict()
         for camera_idx, value in self.last_camera_data.items():
             this_timestamps = value['timestamp']
@@ -396,57 +351,39 @@ class UmiEnv:
                 camera_obs[f'camera{camera_idx}_rgb'] = value['color'][this_idxs]
 
         # align robot obs
-        robot_obs_timestamps = last_timestamp - (
-            np.arange(self.robot_obs_horizon)[::-1] * self.robot_down_sample_steps * dt)
-        robot_pose_interpolator = PoseInterpolator(
-            t=last_robot_data['robot_timestamp'], 
-            x=last_robot_data['ActualTCPPose'])
-        robot_pose = robot_pose_interpolator(robot_obs_timestamps)
-        robot_obs = {
-            'robot0_eef_pos': robot_pose[...,:3],
-            'robot0_eef_rot_axis_angle': robot_pose[...,3:]
-        }
+
 
         # align gripper obs
-        gripper_obs_timestamps = last_timestamp - (
-            np.arange(self.gripper_obs_horizon)[::-1] * self.gripper_down_sample_steps * dt)
-        gripper_interpolator = get_interp1d(
-            t=last_gripper_data['gripper_timestamp'],
-            x=last_gripper_data['gripper_position'][...,None]
-        )
-        gripper_obs = {
-            'robot0_gripper_width': gripper_interpolator(gripper_obs_timestamps)
-        }
 
         # accumulate obs
-        if self.obs_accumulator is not None:
-            self.obs_accumulator.put(
-                data={
-                    'robot0_eef_pose': last_robot_data['ActualTCPPose'],
-                    'robot0_joint_pos': last_robot_data['ActualQ'],
-                    'robot0_joint_vel': last_robot_data['ActualQd'],
-                },
-                timestamps=last_robot_data['robot_timestamp']
-            )
-            self.obs_accumulator.put(
-                data={
-                    'robot0_gripper_width': last_gripper_data['gripper_position'][...,None]
-                },
-                timestamps=last_gripper_data['gripper_timestamp']
-            )
+        # if self.obs_accumulator is not None:
+        #     self.obs_accumulator.put(
+        #         data={
+        #             'robot0_eef_pose': last_robot_data['ActualTCPPose'],
+        #             'robot0_joint_pos': last_robot_data['ActualQ'],
+        #             'robot0_joint_vel': last_robot_data['ActualQd'],
+        #         },
+        #         timestamps=last_robot_data['robot_timestamp']
+        #     )
+        #     self.obs_accumulator.put(
+        #         data={
+        #             'robot0_gripper_width': last_gripper_data['gripper_position'][...,None]
+        #         },
+        #         timestamps=last_gripper_data['gripper_timestamp']
+        #     )
 
         # return obs
         obs_data = dict(camera_obs)
-        obs_data.update(robot_obs)
-        obs_data.update(gripper_obs)
+        # obs_data.update(robot_obs)
+        # obs_data.update(gripper_obs)
         obs_data['timestamp'] = camera_obs_timestamps
 
         return obs_data
-    
-    def exec_actions(self, 
-            actions: np.ndarray, 
-            timestamps: np.ndarray,
-            compensate_latency=False):
+
+    def exec_actions(self,
+                     actions: np.ndarray,
+                     timestamps: np.ndarray,
+                     compensate_latency=False):
         assert self.is_ready
         if not isinstance(actions, np.ndarray):
             actions = np.array(actions)
@@ -481,7 +418,7 @@ class UmiEnv:
                 new_actions,
                 new_timestamps
             )
-    
+
     def get_robot_state(self):
         return self.robot.get_state()
 
@@ -503,7 +440,7 @@ class UmiEnv:
         for i in range(n_cameras):
             video_paths.append(
                 str(this_video_dir.joinpath(f'{i}.mp4').absolute()))
-        
+
         # start recording on camera
         self.camera.restart_put(start_time=start_time)
         self.camera.start_recording(video_path=video_paths, start_time=start_time)
@@ -515,11 +452,11 @@ class UmiEnv:
             dt=1/self.frequency
         )
         print(f'Episode {episode_id} started!')
-    
+
     def end_episode(self):
         "Stop recording"
         assert self.is_ready
-        
+
         # stop video recorder
         self.camera.stop_recording()
 
@@ -575,7 +512,7 @@ class UmiEnv:
                 self.replay_buffer.add_episode(episode, compressors='disk')
                 episode_id = self.replay_buffer.n_episodes - 1
                 print(f'Episode {episode_id} saved!')
-            
+
             self.obs_accumulator = None
             self.action_accumulator = None
 

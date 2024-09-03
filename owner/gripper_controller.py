@@ -33,13 +33,26 @@ class GripperRosInterface:
         self.gripper_vel = 0
         self.gripper_eff = 0
 
+    def test(self):
+        print('ros_test',self.gripper_pos)
     def state_callback(self, msg):
         self.gripper_pos = msg.gripper_pos
         self.gripper_vel = msg.gripper_vel
         self.gripper_eff = msg.gripper_eff
         print('ros',self.gripper_pos)
+        self.test()
 
     def publish_command(self):
+        # Read data from ros_queue and update gripper_cmd
+        # if not self.ros_queue.empty():
+        #     command_data = self.ros_queue.get()
+        #     self.gripper_cmd.mode = command_data['mode']
+        #     self.gripper_cmd.des_pos = command_data['des_pos']
+        #     self.gripper_cmd.des_vel = command_data['des_vel']
+        #     self.gripper_cmd.des_eff = command_data['des_eff']
+        #     self.gripper_cmd.des_kd = command_data['des_kd']
+        #     self.gripper_cmd.des_kp = command_data['des_kp']
+        #     # Publish command using ROS interface
         self.cmd_pub.publish(self.gripper_cmd)
 
 class Command(enum.Enum):
@@ -78,6 +91,26 @@ class GripperController(mp.Process):
             examples=example,
             buffer_size=command_queue_size
         )
+
+        # Define an example dictionary for the ros_queue
+        # example_ros_queue = {
+        #     'mode': 0,           # Corresponds to GripperCmd.mode
+        #     'des_pos': 0.0,    # Corresponds to GripperCmd.des_pos
+        #     'des_vel': 0.0,      # Corresponds to GripperCmd.des_vel
+        #     'des_eff': 0.0,      # Corresponds to GripperCmd.des_eff
+        #     'des_kd': 0.0,       # Corresponds to GripperCmd.des_kd
+        #     'des_kp': 0.0,       # Corresponds to GripperCmd.des_kp
+        #     'gripper_pos': 0,    # Example gripper position
+        #     'gripper_vel': 0,    # Example gripper velocity
+        #     'gripper_eff': 0     # Example gripper efficiency
+        # }
+
+        # Create the ros_queue with the example data
+        # self.ros_queue = SharedMemoryQueue.create_from_examples(
+        #     shm_manager=shm_manager,
+        #     examples=example_ros_queue,
+        #     buffer_size=command_queue_size
+        # )
 
         # build ring buffer
         example = {
@@ -187,6 +220,7 @@ class GripperController(mp.Process):
                     'gripper_receive_timestamp': time.time(),
                     'gripper_timestamp': time.time()
                 }
+                self.ros_interface.test()
                 print('run',self.ros_interface.gripper_pos)
                 self.ring_buffer.put(state)
 
